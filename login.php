@@ -1,6 +1,6 @@
 <?php
 session_start();
-require 'database/database.php'; // Include the database class
+require 'htdocs/database/database.php'; // Include the database class
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
