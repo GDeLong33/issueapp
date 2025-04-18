@@ -15,7 +15,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($password === $confirm_password) {
             try {
                 // Connect to the database
-                require 'database.php'; // Include your database connection class
+                require '../database/database.php'; // Include the database class
 
                 $pdo = Database::connect();
 
