@@ -17,14 +17,12 @@ $user_id  = $_SESSION['user_id'];
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// fetch admin status
 $user_stmt = $pdo->prepare("SELECT admin FROM iss_persons WHERE id = ?");
 $user_stmt->execute([$user_id]);
 $user      = $user_stmt->fetch(PDO::FETCH_ASSOC);
 $is_admin  = ($user && $user['admin'] === 'T');
 
-// —————————————————————————————————————————
-// handle new comment
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['comment'])) {
     $short = trim($_POST['short_comment']);
     $long  = trim($_POST['long_comment']);
@@ -41,10 +39,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['comment'])) {
     exit();
 }
 
-// handle delete comment (admin or owner)
 if (isset($_GET['delete_comment'])) {
     $cid = intval($_GET['delete_comment']);
-    // fetch comment owner
+ 
     $own = $pdo->prepare("SELECT per_id FROM iss_comments WHERE id = ?");
     $own->execute([$cid]);
     $owner = $own->fetchColumn();
@@ -56,12 +53,11 @@ if (isset($_GET['delete_comment'])) {
     exit();
 }
 
-// handle update comment (admin or owner)
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST['action'] ?? '') === 'update_comment') {
     $cid    = intval($_POST['comment_id']);
     $short  = trim($_POST['short_comment']);
     $long   = trim($_POST['long_comment']);
-    // fetch comment owner
+    
     $own = $pdo->prepare("SELECT per_id FROM iss_comments WHERE id = ?");
     $own->execute([$cid]);
     $owner = $own->fetchColumn();
@@ -77,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST['action'] ?? '') === 'updat
     exit();
 }
 
-// prepare edit-comment modal
+
 $editCommentMode = false;
 $editCommentData = [];
 if (isset($_GET['edit_comment'])) {
@@ -94,7 +90,6 @@ if (isset($_GET['edit_comment'])) {
     }
 }
 
-// fetch issue
 $iss = $pdo->prepare("SELECT * FROM iss_issues WHERE id = ?");
 $iss->execute([$issue_id]);
 $issue = $iss->fetch(PDO::FETCH_ASSOC);
@@ -102,7 +97,7 @@ if (!$issue) {
     die("Issue not found.");
 }
 
-// fetch comments (including per_id)
+
 $cstmt = $pdo->prepare("
   SELECT c.id, c.per_id, c.short_comment, c.long_comment, c.posted_date,
          p.fname, p.lname
@@ -129,7 +124,7 @@ Database::disconnect();
 </head>
 <body class="bg-light">
 
-  <!-- NAVBAR / OFFCANVAS -->
+
   <nav class="navbar bg-body-tertiary fixed-top">
     <div class="container-fluid">
       <a class="navbar-brand" href="issues_list.php">Department Issues</a>
@@ -215,7 +210,7 @@ Database::disconnect();
     </form>
   </div>
 
-  <!-- EDIT COMMENT MODAL -->
+
   <?php if ($editCommentMode): ?>
   <div class="modal fade" id="editCommentModal" tabindex="-1">
     <div class="modal-dialog">

@@ -11,14 +11,13 @@ if (!isset($_SESSION['user_id'])) {
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Fetch current user and check admin
+
 $stmt = $pdo->prepare("SELECT * FROM iss_persons WHERE id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $currentUser = $stmt->fetch(PDO::FETCH_ASSOC);
 $isAdmin = $currentUser && strtoupper($currentUser['admin']) === 'T';
 
-// —————————————————————————————————————————
-// HANDLE DELETE
+
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST'
     && ($_POST['action'] ?? '') === 'delete_user'
@@ -30,8 +29,7 @@ if (
     exit();
 }
 
-// —————————————————————————————————————————
-// HANDLE INLINE UPDATE
+
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST'
     && ($_POST['action'] ?? '') === 'update_user'
@@ -47,8 +45,7 @@ if (
     exit();
 }
 
-// —————————————————————————————————————————
-// FETCH FOR EDIT MODAL
+
 $editMode = false;
 $editData = [];
 if (isset($_GET['edit_id']) && $isAdmin) {
@@ -58,8 +55,7 @@ if (isset($_GET['edit_id']) && $isAdmin) {
     $editData = $e->fetch(PDO::FETCH_ASSOC);
 }
 
-// —————————————————————————————————————————
-// FETCH ALL USERS
+
 $q = $pdo->prepare("SELECT id, fname, lname FROM iss_persons ORDER BY lname ASC");
 $q->execute();
 $people = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -154,8 +150,6 @@ Database::disconnect();
     </tbody>
   </table>
 </div>
-
-<!-- EDIT USER MODAL -->
 <?php if ($editMode): ?>
 <div class="modal fade" id="editUserModal" tabindex="-1">
   <div class="modal-dialog">

@@ -10,12 +10,12 @@ if (!isset($_SESSION['user_id'])) {
 $conn = Database::connect();
 $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// fetch current user
+
 $stmt    = $conn->prepare("SELECT admin FROM iss_persons WHERE id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $isAdmin = strtoupper($stmt->fetchColumn() ?? '') === 'T';
 
-// 1) handle delete
+
 if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='delete') {
     $id = (int)$_POST['id'];
     $own = $conn->prepare("SELECT created_by FROM iss_issues WHERE id = ?");
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='delete') 
     exit();
 }
 
-// 2) handle add
+
 if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='add') {
     $ins = $conn->prepare("
       INSERT INTO iss_issues
@@ -51,7 +51,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='add') {
     exit();
 }
 
-// 3) handle update
 if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='update') {
     $id = (int)$_POST['id'];
     $own = $conn->prepare("SELECT created_by FROM iss_issues WHERE id = ?");
@@ -80,10 +79,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='update') 
     exit();
 }
 
-// 4) detect view filter
+
 $view = ($_GET['view'] ?? 'open') === 'all' ? 'all' : 'open';
 
-// 5) fetch issues with filter
+
 if ($view === 'open') {
     $sql = "
       SELECT i.*, p.fname, p.lname
@@ -102,7 +101,7 @@ if ($view === 'open') {
 }
 $issues = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
-// 6) fetch people
+
 $people = $conn
   ->query("SELECT id,fname,lname FROM iss_persons ORDER BY lname")
   ->fetchAll(PDO::FETCH_ASSOC);
@@ -145,7 +144,7 @@ Database::disconnect();
 
 <div class="container mt-5 pt-4">
 
-  <!-- VIEW TOGGLE -->
+ 
   <div class="btn-group mb-3" role="group">
     <a href="issues_list.php?view=open"
        class="btn <?= $view==='open' ? 'btn-primary' : 'btn-outline-primary' ?>">

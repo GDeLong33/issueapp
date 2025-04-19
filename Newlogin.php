@@ -1,9 +1,9 @@
 <?php
-// Initialize variables for error messages
+
 $error = "";
 $success = "";
 
-// Handle form submission for new account creation
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $fname = trim($_POST['fname']);
     $lname = trim($_POST['lname']);
@@ -14,23 +14,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (!empty($fname) && !empty($lname) && !empty($email) && !empty($password) && !empty($confirm_password)) {
         if ($password === $confirm_password) {
             try {
-                // Connect to the database
-                require '../database/database.php'; // Include the database class
+               
+                require '../database/database.php'; 
 
                 $pdo = Database::connect();
 
-                // Check if email already exists
+                
                 $stmt = $pdo->prepare("SELECT id FROM iss_persons WHERE email = :email");
                 $stmt->bindParam(":email", $email, PDO::PARAM_STR);
                 $stmt->execute();
                 if ($stmt->rowCount() > 0) {
                     $error = "Email already exists.";
                 } else {
-                    // Generate a salt and hash the password
+                  
                     $salt = bin2hex(random_bytes(32));
                     $pwd_hash = md5($password . $salt);
 
-                    // Insert the new user into the database
+                  
                     $stmt = $pdo->prepare("INSERT INTO iss_persons (fname, lname, email, pwd_hash, pwd_salt) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$fname, $lname, $email, $pwd_hash, $salt]);
 
