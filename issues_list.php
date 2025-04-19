@@ -3,135 +3,109 @@ session_start();
 require '../database/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    session_destroy();
     header("Location: login.php");
     exit();
 }
 
-// 1) CONNECT & MAKE close_date NULLABLE
 $conn = Database::connect();
 $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$conn->exec("ALTER TABLE iss_issues MODIFY close_date DATE NULL");
 
-// 2) WHO’S LOGGED IN?
-$user_stmt = $conn->prepare("SELECT * FROM iss_persons WHERE id = ?");
-$user_stmt->execute([$_SESSION['user_id']]);
-$user    = $user_stmt->fetch(PDO::FETCH_ASSOC);
-$isAdmin = $user && strtoupper($user['admin']) === 'T';
+// fetch current user
+$stmt    = $conn->prepare("SELECT admin FROM iss_persons WHERE id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$isAdmin = strtoupper($stmt->fetchColumn() ?? '') === 'T';
 
-// 3) DELETE (admins OR owners)
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' 
-    && ($_POST['action'] ?? '') === 'delete'
-) {
-    // lookup owner
-    $ownerStmt = $conn->prepare("SELECT per_id FROM iss_issues WHERE id = ?");
-    $ownerStmt->execute([$_POST['id']]);
-    $ownerId = $ownerStmt->fetchColumn();
-
-    if ($isAdmin || $ownerId == $_SESSION['user_id']) {
-        $del = $conn->prepare("DELETE FROM iss_issues WHERE id = ?");
-        $del->execute([$_POST['id']]);
+// 1) handle delete
+if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='delete') {
+    $id = (int)$_POST['id'];
+    $own = $conn->prepare("SELECT created_by FROM iss_issues WHERE id = ?");
+    $own->execute([$id]);
+    $uploader = $own->fetchColumn();
+    if ($isAdmin || $uploader == $_SESSION['user_id']) {
+        $conn->prepare("DELETE FROM iss_issues WHERE id = ?")
+             ->execute([$id]);
     }
-    header("Location: issues_list.php");
+    header("Location: issues_list.php?view=" . urlencode($_GET['view'] ?? 'open'));
     exit();
 }
 
-// 4) ADD (any logged‑in user)
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' 
-    && ($_POST['action'] ?? '') === 'add'
-) {
+// 2) handle add
+if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='add') {
     $ins = $conn->prepare("
-      INSERT INTO iss_issues 
-        (short_description,long_description,open_date,close_date,priority,org,project,per_id)
-      VALUES (?,?,?,?,?,?,?,?)
+      INSERT INTO iss_issues
+        (short_description,long_description,open_date,close_date,priority,org,project,per_id,created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
-    $ins->bindValue(1, $_POST['short_description'], PDO::PARAM_STR);
-    $ins->bindValue(2, $_POST['long_description'],  PDO::PARAM_STR);
-    $ins->bindValue(3, $_POST['open_date'],         PDO::PARAM_STR);
-
-    if (empty($_POST['close_date'])) {
-        $ins->bindValue(4, null, PDO::PARAM_NULL);
-    } else {
-        $ins->bindValue(4, $_POST['close_date'], PDO::PARAM_STR);
-    }
-
-    $ins->bindValue(5, $_POST['priority'],   PDO::PARAM_STR);
-    $ins->bindValue(6, $_POST['organization'], PDO::PARAM_STR);
-    $ins->bindValue(7, $_POST['project'],      PDO::PARAM_STR);
-    // assign current user as owner
-    $ins->bindValue(8, $_SESSION['user_id'],   PDO::PARAM_INT);
-
-    $ins->execute();
-    header("Location: issues_list.php");
+    $ins->execute([
+      $_POST['short_description'],
+      $_POST['long_description'],
+      $_POST['open_date'],
+      empty($_POST['close_date']) ? null : $_POST['close_date'],
+      $_POST['priority'],
+      $_POST['organization'],
+      $_POST['project'],
+      $_POST['per_id'],
+      $_SESSION['user_id'],
+    ]);
+    header("Location: issues_list.php?view=" . urlencode($_GET['view'] ?? 'open'));
     exit();
 }
 
-// 5) UPDATE (admins OR owners)
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' 
-    && ($_POST['action'] ?? '') === 'update'
-) {
-    $id = $_POST['id'];
-    // lookup owner
-    $ownerStmt = $conn->prepare("SELECT per_id FROM iss_issues WHERE id = ?");
-    $ownerStmt->execute([$id]);
-    $ownerId = $ownerStmt->fetchColumn();
-
-    if ($isAdmin || $ownerId == $_SESSION['user_id']) {
+// 3) handle update
+if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='update') {
+    $id = (int)$_POST['id'];
+    $own = $conn->prepare("SELECT created_by FROM iss_issues WHERE id = ?");
+    $own->execute([$id]);
+    $uploader = $own->fetchColumn();
+    if ($isAdmin || $uploader == $_SESSION['user_id']) {
         $upd = $conn->prepare("
           UPDATE iss_issues SET
             short_description=?, long_description=?, open_date=?, close_date=?,
-            priority=?, org=?, project=?
+            priority=?, org=?, project=?, per_id=?
           WHERE id=?
         ");
-        $upd->bindValue(1, $_POST['short_description'], PDO::PARAM_STR);
-        $upd->bindValue(2, $_POST['long_description'],  PDO::PARAM_STR);
-        $upd->bindValue(3, $_POST['open_date'],         PDO::PARAM_STR);
-
-        if (empty($_POST['close_date'])) {
-            $upd->bindValue(4, null, PDO::PARAM_NULL);
-        } else {
-            $upd->bindValue(4, $_POST['close_date'], PDO::PARAM_STR);
-        }
-
-        $upd->bindValue(5, $_POST['priority'],  PDO::PARAM_STR);
-        $upd->bindValue(6, $_POST['organization'], PDO::PARAM_STR);
-        $upd->bindValue(7, $_POST['project'],     PDO::PARAM_STR);
-        $upd->bindValue(8, $id,                  PDO::PARAM_INT);
-
-        $upd->execute();
+        $upd->execute([
+          $_POST['short_description'],
+          $_POST['long_description'],
+          $_POST['open_date'],
+          empty($_POST['close_date']) ? null : $_POST['close_date'],
+          $_POST['priority'],
+          $_POST['organization'],
+          $_POST['project'],
+          $_POST['per_id'],
+          $id
+        ]);
     }
-    header("Location: issues_list.php");
+    header("Location: issues_list.php?view=" . urlencode($_GET['view'] ?? 'open'));
     exit();
 }
 
-// 6) EDIT MODE? (admins OR owners)
-$editMode = false;
-$editData = [];
-if (isset($_GET['edit_id'])) {
-    $eid = $_GET['edit_id'];
-    $ownerStmt = $conn->prepare("SELECT per_id FROM iss_issues WHERE id = ?");
-    $ownerStmt->execute([$eid]);
-    $ownerId = $ownerStmt->fetchColumn();
+// 4) detect view filter
+$view = ($_GET['view'] ?? 'open') === 'all' ? 'all' : 'open';
 
-    if ($isAdmin || $ownerId == $_SESSION['user_id']) {
-        $editMode = true;
-        $e = $conn->prepare("SELECT * FROM iss_issues WHERE id = ?");
-        $e->execute([$eid]);
-        $editData = $e->fetch(PDO::FETCH_ASSOC);
-    }
+// 5) fetch issues with filter
+if ($view === 'open') {
+    $sql = "
+      SELECT i.*, p.fname, p.lname
+        FROM iss_issues i
+        LEFT JOIN iss_persons p ON i.per_id = p.id
+       WHERE i.close_date IS NULL
+       ORDER BY i.project, i.priority DESC, i.open_date
+    ";
+} else {
+    $sql = "
+      SELECT i.*, p.fname, p.lname
+        FROM iss_issues i
+        LEFT JOIN iss_persons p ON i.per_id = p.id
+       ORDER BY i.project, i.priority DESC, i.open_date
+    ";
 }
+$issues = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
-// 7) FETCH FOR DISPLAY
-$issues = $conn
-  ->query("
-    SELECT i.*, p.fname, p.lname
-      FROM iss_issues i
-      LEFT JOIN iss_persons p ON i.per_id = p.id
-      ORDER BY i.project, i.priority DESC, i.open_date
-  ")->fetchAll(PDO::FETCH_ASSOC);
+// 6) fetch people
+$people = $conn
+  ->query("SELECT id,fname,lname FROM iss_persons ORDER BY lname")
+  ->fetchAll(PDO::FETCH_ASSOC);
 
 Database::disconnect();
 ?>
@@ -147,10 +121,9 @@ Database::disconnect();
   >
 </head>
 <body>
-
 <nav class="navbar bg-body-tertiary fixed-top">
   <div class="container-fluid">
-    <a class="navbar-brand" href="#">Department Issues</a>
+    <a class="navbar-brand" href="issues_list.php">Department Issues</a>
     <button class="navbar-toggler" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNavbar">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -171,140 +144,143 @@ Database::disconnect();
 </nav>
 
 <div class="container mt-5 pt-4">
-  <div class="d-flex justify-content-end mt-3">
-    <button 
-      class="btn btn-success" 
-      data-bs-toggle="modal" 
-      data-bs-target="#addIssueModal" 
-      id="addBtn"
-    >+ Add Issue</button>
+
+  <!-- VIEW TOGGLE -->
+  <div class="btn-group mb-3" role="group">
+    <a href="issues_list.php?view=open"
+       class="btn <?= $view==='open' ? 'btn-primary' : 'btn-outline-primary' ?>">
+      Open Issues
+    </a>
+    <a href="issues_list.php?view=all"
+       class="btn <?= $view==='all'  ? 'btn-primary' : 'btn-outline-primary' ?>">
+      All Issues
+    </a>
   </div>
 
-  <table class="table table-striped mt-3">
+  <div class="d-flex justify-content-end mb-2">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#issueModal" id="addBtn">
+      + Add Issue
+    </button>
+  </div>
+
+  <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID</th><th>Issue</th><th>Short Desc</th><th>Priority</th>
-        <th>Open Date</th><th>Close Date</th><th>Responsible</th><th>Actions</th>
+        <th>ID</th><th>Project</th><th>Short Desc</th><th>Priority</th>
+        <th>Open</th><th>Close</th><th>Resp.</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       <?php foreach($issues as $row): ?>
-        <tr>
-          <td><?= $row['id'] ?></td>
-          <td><?= htmlspecialchars($row['project']) ?></td>
-          <td><?= htmlspecialchars($row['short_description']) ?></td>
-          <td><?= htmlspecialchars($row['priority']) ?></td>
-          <td><?= htmlspecialchars($row['open_date']) ?></td>
-          <td><?= $row['close_date'] ?? 'N/A' ?></td>
-          <td>
-            <?= htmlspecialchars($row['fname'] . ' ' . $row['lname']) ?>
-          </td>
-          <td>
-            <a href="issue.php?id=<?= $row['id'] ?>" class="btn btn-info btn-sm">View</a>
-
-            <?php if ($isAdmin || $row['per_id'] == $_SESSION['user_id']): ?>
-              <a href="issues_list.php?edit_id=<?= $row['id'] ?>" class="btn btn-warning btn-sm">Update</a>
-              <form method="POST" action="issues_list.php" class="d-inline">
-                <input type="hidden" name="action" value="delete">
-                <input type="hidden" name="id"     value="<?= $row['id'] ?>">
-                <button 
-                  type="submit" 
-                  class="btn btn-danger btn-sm" 
-                  onclick="return confirm('Delete this issue?')"
-                >Delete</button>
-              </form>
-            <?php endif; ?>
-          </td>
-        </tr>
+      <tr>
+        <td><?= $row['id'] ?></td>
+        <td><?= htmlspecialchars($row['project']) ?></td>
+        <td><?= htmlspecialchars($row['short_description']) ?></td>
+        <td><?= htmlspecialchars($row['priority']) ?></td>
+        <td><?= htmlspecialchars($row['open_date']) ?></td>
+        <td><?= $row['close_date'] ?? 'N/A' ?></td>
+        <td><?= htmlspecialchars($row['fname'].' '.$row['lname']) ?></td>
+        <td>
+          <a href="issue.php?id=<?= $row['id'] ?>" class="btn btn-info btn-sm">View</a>
+          <?php if($isAdmin || $row['created_by']==$_SESSION['user_id']): ?>
+            <a href="?edit_id=<?= $row['id'] ?>&view=<?= $view ?>"
+               class="btn btn-warning btn-sm">Edit</a>
+            <form method="POST" class="d-inline">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id"     value="<?= $row['id'] ?>">
+              <button onclick="return confirm('Delete?')" class="btn btn-danger btn-sm">
+                Delete
+              </button>
+            </form>
+          <?php endif; ?>
+        </td>
+      </tr>
       <?php endforeach; ?>
     </tbody>
   </table>
 </div>
 
-<!-- Add / Update Modal -->
-<div class="modal fade" id="addIssueModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><?= $editMode ? 'Update Issue' : 'Add New Issue' ?></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form method="POST" action="issues_list.php" id="issueForm">
-          <input type="hidden" name="action" value="<?= $editMode ? 'update' : 'add' ?>">
-          <?php if ($editMode): ?>
-            <input type="hidden" name="id" value="<?= htmlspecialchars($editData['id']) ?>">
-          <?php endif; ?>
-
-          <div class="mb-3">
-            <label class="form-label">Short Description</label>
-            <input type="text" class="form-control" name="short_description" required
-                   value="<?= $editMode ? htmlspecialchars($editData['short_description']) : '' ?>">
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Long Description</label>
-            <textarea class="form-control" name="long_description" required><?= $editMode ? htmlspecialchars($editData['long_description']) : '' ?></textarea>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Open Date</label>
-            <input type="date" class="form-control" name="open_date" required
-                   value="<?= $editMode ? htmlspecialchars($editData['open_date']) : '' ?>">
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Close Date</label>
-            <input type="date" class="form-control" name="close_date"
-                   value="<?= $editMode && $editData['close_date'] ? htmlspecialchars($editData['close_date']) : '' ?>">
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Priority</label>
-            <select class="form-select" name="priority" required>
-              <?php foreach(['High','Medium','Low'] as $level):
-                $sel = ($editMode && $editData['priority'] === $level) ? 'selected' : '';
-              ?>
-                <option value="<?= $level ?>" <?= $sel ?>><?= $level ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Organization</label>
-            <input type="text" class="form-control" name="organization" required
-                   value="<?= $editMode ? htmlspecialchars($editData['org']) : '' ?>">
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Issue</label>
-            <input type="text" class="form-control" name="project" required
-                   value="<?= $editMode ? htmlspecialchars($editData['project']) : '' ?>">
-          </div>
-
-          <button type="submit" class="btn btn-primary"><?= $editMode ? 'Update Issue' : 'Add Issue' ?></button>
-        </form>
-      </div>
+<!-- ADD / EDIT MODAL (same as before) -->
+<div class="modal fade" id="issueModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title"><?= isset($editMode) && $editMode ? 'Edit Issue':'Add Issue' ?></h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button>
     </div>
-  </div>
+    <div class="modal-body">
+      <form id="issueForm" method="POST">
+        <input type="hidden" name="action" value="<?= isset($editMode)&&$editMode?'update':'add' ?>">
+        <?php if(!empty($editData)): ?>
+          <input type="hidden" name="id" value="<?= $editData['id'] ?>">
+        <?php endif; ?>
+        <!-- form fields… same as before … -->
+        <div class="mb-3">
+          <label>Person Responsible</label>
+          <select name="per_id" class="form-select" required>
+            <option value="">Select…</option>
+            <?php foreach($people as $p): 
+              $sel = (!empty($editData) && $editData['per_id']==$p['id'])?'selected':''; ?>
+              <option value="<?=$p['id']?>" <?=$sel?>>
+                <?=htmlspecialchars($p['fname'].' '.$p['lname'])?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label>Short Description</label>
+          <input name="short_description" class="form-control" required
+                 value="<?= !empty($editData)?htmlspecialchars($editData['short_description']):'' ?>">
+        </div>
+        <div class="mb-3">
+          <label>Long Description</label>
+          <textarea name="long_description" class="form-control" required><?= !empty($editData)?htmlspecialchars($editData['long_description']):'' ?></textarea>
+        </div>
+        <div class="mb-3">
+          <label>Open Date</label>
+          <input type="date" name="open_date" class="form-control" required
+                 value="<?= !empty($editData)?htmlspecialchars($editData['open_date']):'' ?>">
+        </div>
+        <div class="mb-3">
+          <label>Close Date</label>
+          <input type="date" name="close_date" class="form-control"
+                 value="<?= (!empty($editData)&&$editData['close_date'])?htmlspecialchars($editData['close_date']):'' ?>">
+        </div>
+        <div class="mb-3">
+          <label>Priority</label>
+          <select name="priority" class="form-select" required>
+            <?php foreach(['High','Medium','Low'] as $lvl):
+              $sel = (!empty($editData) && $editData['priority']==$lvl)?'selected':''; ?>
+              <option value="<?=$lvl?>" <?=$sel?>><?=$lvl?></option>
+            <?php endforeach;?>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label>Organization</label>
+          <input name="organization" class="form-control" required
+                 value="<?= !empty($editData)?htmlspecialchars($editData['org']):'' ?>">
+        </div>
+        <div class="mb-3">
+          <label>Project</label>
+          <input name="project" class="form-control" required
+                 value="<?= !empty($editData)?htmlspecialchars($editData['project']):'' ?>">
+        </div>
+
+        <button class="btn btn-primary"><?= isset($editMode)&&$editMode?'Update':'Add' ?> Issue</button>
+      </form>
+    </div>
+  </div></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  // reset form when opening "Add Issue"
-  document.getElementById('addBtn').addEventListener('click', function() {
+  document.getElementById('addBtn').onclick = () => {
     document.getElementById('issueForm').reset();
     document.querySelector('input[name="action"]').value = 'add';
     document.querySelector('input[name="id"]')?.remove();
-  });
-
-  // auto‑show modal if editing
-  <?php if ($editMode): ?>
-  document.addEventListener('DOMContentLoaded', function () {
-    new bootstrap.Modal(document.getElementById('addIssueModal')).show();
-  });
+  };
+  <?php if(!empty($editMode) && $editMode): ?>
+  new bootstrap.Modal(document.getElementById('issueModal')).show();
   <?php endif; ?>
 </script>
-
 </body>
 </html>

@@ -81,7 +81,7 @@ Database::disconnect();
 
 <nav class="navbar bg-body-tertiary fixed-top">
   <div class="container-fluid">
-    <a class="navbar-brand" href="#">Department Issues</a>
+    <a class="navbar-brand" href="issues_list.php">Department Issues</a>
     <button 
       class="navbar-toggler" 
       type="button" 
@@ -110,7 +110,7 @@ Database::disconnect();
   <h2 class="mb-4">All Users</h2>
 
   <?php if ($isAdmin): ?>
-    <a href="create_user.php" class="btn btn-success mb-3">+ New User</a>
+    <a href="Newlogin.php" class="btn btn-success mb-3">+ New User</a>
   <?php endif; ?>
 
   <table class="table table-striped table-bordered">

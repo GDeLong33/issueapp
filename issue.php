@@ -2,14 +2,13 @@
 session_start();
 require '../database/database.php';
 
-if (!isset($_GET['id'])) {
-    die("Issue ID not provided.");
-}
-
 // ensure logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
+}
+if (!isset($_GET['id'])) {
+    die("Issue ID not provided.");
 }
 
 $issue_id = intval($_GET['id']);
@@ -42,11 +41,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['comment'])) {
     exit();
 }
 
-// handle delete comment (admin only)
-if (isset($_GET['delete_comment']) && $is_admin) {
+// handle delete comment (admin or owner)
+if (isset($_GET['delete_comment'])) {
     $cid = intval($_GET['delete_comment']);
-    $del = $pdo->prepare("DELETE FROM iss_comments WHERE id = ?");
-    $del->execute([$cid]);
+    // fetch comment owner
+    $own = $pdo->prepare("SELECT per_id FROM iss_comments WHERE id = ?");
+    $own->execute([$cid]);
+    $owner = $own->fetchColumn();
+    if ($is_admin || $owner == $user_id) {
+        $del = $pdo->prepare("DELETE FROM iss_comments WHERE id = ?");
+        $del->execute([$cid]);
+    }
     header("Location: issue.php?id={$issue_id}");
     exit();
 }
@@ -56,7 +61,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST['action'] ?? '') === 'updat
     $cid    = intval($_POST['comment_id']);
     $short  = trim($_POST['short_comment']);
     $long   = trim($_POST['long_comment']);
-    // fetch owner
+    // fetch comment owner
     $own = $pdo->prepare("SELECT per_id FROM iss_comments WHERE id = ?");
     $own->execute([$cid]);
     $owner = $own->fetchColumn();
@@ -185,9 +190,6 @@ Database::disconnect();
           <?php if ($is_admin || $c['per_id'] == $user_id): ?>
             <a href="issue.php?id=<?= $issue_id ?>&edit_comment=<?= $c['id'] ?>"
                class="btn btn-warning btn-sm me-1">Edit</a>
-          <?php endif; ?>
-
-          <?php if ($is_admin): ?>
             <a href="issue.php?id=<?= $issue_id ?>&delete_comment=<?= $c['id'] ?>"
                class="btn btn-danger btn-sm float-end"
                onclick="return confirm('Delete this comment?')"
@@ -257,3 +259,4 @@ Database::disconnect();
 
 </body>
 </html>
+
